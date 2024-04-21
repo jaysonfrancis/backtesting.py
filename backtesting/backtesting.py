@@ -406,7 +406,7 @@ class Order:
         return self
 
     def __repr__(self):
-        return '<Order {}>'.format(', '.join(f'{param}={round(value, 5)}'
+        return '<Order {}>'.format(', '.join(f'{param}={round(value, 5) if isinstance(value, float) else value}'
                                              for param, value in (
                                                  ('size', self.__size),
                                                  ('limit', self.__limit_price),
@@ -416,7 +416,7 @@ class Order:
                                                  ('contingent', self.is_contingent),
                                                  ('tag', self.__tag),
                                              ) if value is not None))
-
+    
     def cancel(self):
         """Cancel the order."""
         self.__broker.orders.remove(self)
@@ -538,6 +538,7 @@ class Trade:
         self.__sl_order: Optional[Order] = None
         self.__tp_order: Optional[Order] = None
         self.__tag = tag
+        self.__status = ''
 
     def __repr__(self):
         return f'<Trade size={self.__size} time={self.__entry_bar}-{self.__exit_bar or ""} ' \
@@ -560,7 +561,14 @@ class Trade:
         self.__broker.orders.insert(0, order)
 
     # Fields getters
-
+    @property 
+    def status(self):
+        return self.__status 
+    
+    @status.setter
+    def status(self, value):
+        self.__status = value
+    
     @property
     def size(self):
         """Trade size (volume; negative for short trades)."""
@@ -783,7 +791,7 @@ class _Broker:
         Long/short `price`, adjusted for commisions.
         In long positions, the adjusted price is a fraction higher, and vice versa.
         """
-        return (price or self.last_price) * (1 + copysign(self._commission, size))
+        return (price or self.last_price)  * (1 + copysign(self._commission, size))
 
     @property
     def equity(self) -> float:
@@ -995,6 +1003,11 @@ class _Broker:
             self.orders.remove(trade._tp_order)
 
         self.closed_trades.append(trade._replace(exit_price=price, exit_bar=time_index))
+        if trade.status != 'expired':
+            if trade.pl > 0:
+                trade.status = 'tp'
+            else:
+                trade.status = 'sl'
         self._cash += trade.pl
 
     def _open_trade(self, price: float, size: int,
